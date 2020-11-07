@@ -13,6 +13,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install liburing
+      run: sudo apt install liburing-dev
     - name: autoconf
       run: autoreconf --install
     - name: configure
