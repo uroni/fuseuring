@@ -6,7 +6,7 @@ This is an example program that demonstrates how to use io_uring to drive Linux 
 
 Using io_uring reduces the number of system calls the fuse program makes which should speed it up.
 
-Fuse is sometimes used to export a single file to be used as volume, as well. E.g. vdfuse, [s3backer](https://github.com/archiecobbs/s3backer), [UrBackup](https://www.urbackup.org/) (vhd/vhdz mounting). Recent improvements in loop (direct-io), fuse and Linux memory management (`PR_SET_IO_FLUSHER`) have made this really performant.
+Fuse is sometimes used to export a single file to be used as volume, as well. E.g. vdfuse, [s3backer](https://github.com/archiecobbs/s3backer), [UrBackup](https://www.urbackup.org/) (vhd/vhdz mounting). Recent improvements in loop (async direct-io), fuse and Linux memory management (`PR_SET_IO_FLUSHER`) have made this really performant.
 
 ### Performance
 
