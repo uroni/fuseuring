@@ -21,7 +21,3 @@ jobs:
       run: ./configure CXXFLAGS="-O2 -fcoroutines -flto" CXX=g++-10 LDFLAGS="-flto"
     - name: make
       run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
