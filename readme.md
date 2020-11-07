@@ -127,7 +127,7 @@ Need gcc >= 10 for C++ coroutines. Depends on (recent) liburing-dev.
 
 ```bash
 autoreconf --install
-./configure
+./configure CXXFLAGS="-fcoroutines"
 make
 ```
 
