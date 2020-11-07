@@ -9,10 +9,12 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install GCC 10
+      run: add-apt-repository ppa:ubuntu-toolchain-r/ppa && apt update && apt install g++-10
     - name: autoconf
       run: autoreconf --install
     - name: configure
