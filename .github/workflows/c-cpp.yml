@@ -13,12 +13,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Install GCC 10
-      run: sudo add-apt-repository ppa:ubuntu-toolchain-r/ppa && sudo apt update && sudo apt install g++-10 libstdc++-10-dev
     - name: autoconf
       run: autoreconf --install
     - name: configure
-      run: ./configure
+      run: ./configure CXXFLAGS="-O2 -fcoroutines -flto" CXX=g++-10 LDFLAGS="-flto"
     - name: make
       run: make
     - name: make check
