@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Copyright (C) Martin Raiber
 #include "fuse_io_service.h"
-#include "../Interface/Server.h"
 #include <liburing.h>
 #include <iostream>
 
