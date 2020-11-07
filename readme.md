@@ -139,6 +139,7 @@ Needs a recent Linux kernel (>=5.9) for io_uring functionality and recent `loset
 FMNT=/media/test
 BMNT=/media/bench
 mkdir -p "$FMNT"
+mkdir -p "$BMNT"
 ./fuseuring /tmp/backing_file.img "$FMNT" $((500*1024*1024)) 5000 &
 LODEV=$(losetup --find --show "$FMNT/volume" --direct-io=on)
 mkfs.ext4 $LODEV || true
