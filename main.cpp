@@ -11,6 +11,10 @@
 #include <sys/mman.h>
 #include <stdlib.h>
 
+#ifndef PR_SET_IO_FLUSHER
+#define PR_SET_IO_FLUSHER 57
+#endif
+
 int main(int argc, char* argv[])
 {
     if(argc<5)
