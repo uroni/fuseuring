@@ -18,6 +18,6 @@ jobs:
     - name: autoconf
       run: autoreconf --install
     - name: configure
-      run: ./configure CXXFLAGS="-O2 -fcoroutines -flto" CXX=g++-10 LDFLAGS="-flto"
+      run: ./configure CXX=g++-10
     - name: make
       run: make
