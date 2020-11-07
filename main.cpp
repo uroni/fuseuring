@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
         return 101;
     }
 
-    int backing_fd = open(argv[1], O_CLOEXEC|O_CREAT|O_RDWR);
+    int backing_fd = open(argv[1], O_CLOEXEC|O_CREAT|O_RDWR, S_IRWXU);
     //int backing_fd = memfd_create("backing_file", MFD_CLOEXEC);
 
     if(backing_fd==-1)

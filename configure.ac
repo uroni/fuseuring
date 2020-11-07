@@ -9,6 +9,10 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_SYSTEM
 AM_INIT_AUTOMAKE([subdir-objects tar-ustar])
 
+AC_ARG_ENABLE([fcoroutines],
+     AS_HELP_STRING([--disable-fcoroutines], [Disable compiling with -fcoroutines if available]))
+AM_CONDITIONAL(WITH_FCOROUTINES, test "x$enable_fcoroutines" != xno)
+
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
@@ -28,6 +32,9 @@ AC_LANG([C++])
 
 # Checks for header files.
 AC_CHECK_HEADERS([pthread.h])
+
+AX_CHECK_COMPILE_FLAG(-fcoroutines,
+	[], [AM_CONDITIONAL(WITH_FCOROUTINES, test xyes = xno)])
 
 # Checks for library functions.
 
