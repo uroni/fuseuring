@@ -13,7 +13,7 @@
 #include <memory.h>
 #include <thread>
 #include <iostream>
-#include "fuse_io_service.h"
+#include "fuse_io_context.h"
 
 namespace
 {
@@ -32,7 +32,7 @@ namespace
 	}
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<char*> read_rbytes(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<char*> read_rbytes(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     size_t rbytes, bool add_zero, std::vector<char>& free_buf)
 {
     if(rbytes==0)
@@ -83,7 +83,7 @@ namespace
     }
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> send_reply(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io)
+[[nodiscard]] fuse_io_context::io_uring_task<int> send_reply(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io)
 {
     struct io_uring_sqe *sqe;
     sqe = io.get_sqe();
@@ -117,7 +117,7 @@ namespace
     }
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> send_reply(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> send_reply(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     const std::vector<char>& buf)
 {
     struct io_uring_sqe *sqe;
@@ -153,7 +153,7 @@ namespace
     }
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_unknown(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io)
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_unknown(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
     fuse_out_header* out_header = reinterpret_cast<fuse_out_header*>(fuse_io->scratch_buf);
@@ -165,7 +165,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> send_attr(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> send_attr(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     uint64_t unique, uint64_t nodeid)
 {
     fuse_out_header* out_header = reinterpret_cast<fuse_out_header*>(fuse_io->scratch_buf);
@@ -201,7 +201,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_getattr(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_getattr(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -218,7 +218,7 @@ namespace
     co_return co_await send_attr(io, fuse_io, fheader->unique, nodeid);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_setattr(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_setattr(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -239,7 +239,7 @@ namespace
     co_return co_await send_attr(io, fuse_io, fheader->unique, nodeid);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_lookup(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_lookup(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -283,7 +283,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_opendir(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_opendir(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -303,7 +303,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_open(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_open(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -323,7 +323,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_read(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_read(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -411,7 +411,7 @@ namespace
     co_return 0;
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_write(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_write(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -560,7 +560,7 @@ namespace
     co_return 0;
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_releasedir(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_releasedir(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -576,7 +576,7 @@ namespace
     co_return co_await send_reply(io, fuse_io);
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_release(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_release(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -607,7 +607,7 @@ void add_dir(std::vector<char>& buf, const std::string& name, size_t off, const 
     memset(dirent->name + name.size(), 0, bsize-FUSE_NAME_OFFSET-name.size());
 }
 
-[[nodiscard]] fuse_io_service::io_uring_task<int> handle_readdir(fuse_io_service& io, fuse_io_service::FuseIoVal& fuse_io,
+[[nodiscard]] fuse_io_context::io_uring_task<int> handle_readdir(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
     char* rbytes_buf)
 {
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
@@ -645,9 +645,9 @@ void add_dir(std::vector<char>& buf, const std::string& name, size_t off, const 
     co_return co_await send_reply(io, fuse_io, out_buf);
 }
 
-fuse_io_service::io_uring_task<int> queue_fuse_read(fuse_io_service& io)
+fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
 {
-    fuse_io_service::FuseIoVal fuse_io = io.get_fuse_io();
+    fuse_io_context::FuseIoVal fuse_io = io.get_fuse_io();
 
     DBG_PRINT(std::cout << "queue_fuse_read" << std::endl);
     struct io_uring_sqe *sqe1 = io.get_sqe();
@@ -946,7 +946,7 @@ int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_backgr
     int fuse_fixed_fd = 0;
     std::vector<struct iovec> reg_buffers;
 
-    fuse_io_service::FuseRing fuse_ring;
+    fuse_io_context::FuseRing fuse_ring;
     fuse_ring.fd = fuse_fixed_fd;
     fuse_ring.backing_fd = fixed_fds.size();
     fixed_fds.push_back(backing_fd);
@@ -974,7 +974,7 @@ int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_backgr
 
     for(size_t i=0;i<init_out.init_out.max_background;++i)
     {
-        std::unique_ptr<fuse_io_service::FuseIo> new_io = std::make_unique<fuse_io_service::FuseIo>();
+        std::unique_ptr<fuse_io_context::FuseIo> new_io = std::make_unique<fuse_io_context::FuseIo>();
         rc = pipe2(new_io->pipe, O_CLOEXEC|O_NONBLOCK);
         if(rc!=0)
         {
@@ -1036,7 +1036,7 @@ int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_backgr
     fuse_ring.backing_f_size = bst.st_size;
 
     std::cout << "Running..." << std::endl;
-    fuse_io_service service(std::move(fuse_ring));
+    fuse_io_context service(std::move(fuse_ring));
     rc = service.run(queue_fuse_read);
 
     io_uring_unregister_buffers(&fuse_uring);

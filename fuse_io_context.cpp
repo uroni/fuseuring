@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Copyright (C) Martin Raiber
-#include "fuse_io_service.h"
+#include "fuse_io_context.h"
 #include <liburing.h>
 #include <iostream>
 
 
-fuse_io_service::fuse_io_service(FuseRing fuse_ring)
+fuse_io_context::fuse_io_context(FuseRing fuse_ring)
  : fuse_ring(std::move(fuse_ring)), last_rc(0)
 {
 }
 
-int fuse_io_service::fuseuring_handle_cqe(struct io_uring_cqe *cqe)
+int fuse_io_context::fuseuring_handle_cqe(struct io_uring_cqe *cqe)
 {
     if(cqe->user_data==0)
     {
@@ -31,7 +31,7 @@ int fuse_io_service::fuseuring_handle_cqe(struct io_uring_cqe *cqe)
     return 0;    
 }
 
-int fuse_io_service::fuseuring_submit(bool block)
+int fuse_io_context::fuseuring_submit(bool block)
 {
     if(fuse_ring.ring_submit)
     {
@@ -60,7 +60,7 @@ int fuse_io_service::fuseuring_submit(bool block)
     return 0;
 }
 
-int fuse_io_service::run(queue_fuse_read_t queue_read)
+int fuse_io_context::run(queue_fuse_read_t queue_read)
 {
     fuse_ring.ring_submit = false;
 
@@ -98,7 +98,7 @@ int fuse_io_service::run(queue_fuse_read_t queue_read)
     }
 }
 
-fuse_io_service::io_uring_task_discard<int> fuse_io_service::queue_read_set_rc(queue_fuse_read_t queue_read)
+fuse_io_context::io_uring_task_discard<int> fuse_io_context::queue_read_set_rc(queue_fuse_read_t queue_read)
 {
     int rc = co_await queue_read(*this);
     if(rc!=0)

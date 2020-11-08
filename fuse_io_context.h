@@ -30,7 +30,7 @@ static uint64_t handle_v(std::coroutine_handle<> p_awaiter)
     return (uint64_t)*((uint64_t*)&p_awaiter);
 }
 
-struct fuse_io_service
+struct fuse_io_context
 {
     template<typename T>
     struct IoUringAwaiter
@@ -321,7 +321,7 @@ struct fuse_io_service
 
     struct FuseIoVal
     {
-        FuseIoVal(fuse_io_service& io_service,
+        FuseIoVal(fuse_io_context& io_service,
             std::unique_ptr<FuseIo> fuse_io)
          : io_service(io_service),
             fuse_io(std::move(fuse_io))
@@ -345,7 +345,7 @@ struct fuse_io_service
         }
 
     private:
-        fuse_io_service& io_service;
+        fuse_io_context& io_service;
         std::unique_ptr<FuseIo> fuse_io;
     };
 
@@ -374,13 +374,13 @@ struct fuse_io_service
 
     FuseRing fuse_ring;
 
-    fuse_io_service(FuseRing fuse_ring);
-    fuse_io_service(fuse_io_service const&) = delete;
-	fuse_io_service(fuse_io_service&& other) = delete;
-	fuse_io_service& operator=(fuse_io_service&&) = delete;
-	fuse_io_service& operator=(fuse_io_service const&) = delete;
+    fuse_io_context(FuseRing fuse_ring);
+    fuse_io_context(fuse_io_context const&) = delete;
+	fuse_io_context(fuse_io_context&& other) = delete;
+	fuse_io_context& operator=(fuse_io_context&&) = delete;
+	fuse_io_context& operator=(fuse_io_context const&) = delete;
 
-    typedef fuse_io_service::io_uring_task<int> (*queue_fuse_read_t)(fuse_io_service& io);
+    typedef fuse_io_context::io_uring_task<int> (*queue_fuse_read_t)(fuse_io_context& io);
 
     int run(queue_fuse_read_t queue_read);
 
@@ -407,7 +407,7 @@ private:
         }
     };
 
-    fuse_io_service::io_uring_task_discard<int> queue_read_set_rc(queue_fuse_read_t queue_read);
+    fuse_io_context::io_uring_task_discard<int> queue_read_set_rc(queue_fuse_read_t queue_read);
 
     int fuseuring_handle_cqe(struct io_uring_cqe *cqe);
     int fuseuring_submit(bool block);
