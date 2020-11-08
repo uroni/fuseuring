@@ -150,6 +150,45 @@ struct fuse_io_context
         return ret;
     }
 
+    struct MallocItem
+    {
+        MallocItem* next;
+        char data[];
+    };
+
+    static MallocItem* malloc_cache_head;
+    static constexpr size_t malloc_cache_item_size = 500;
+
+    static void clear_malloc_cache()
+    {
+        while(malloc_cache_head)
+        {
+            MallocItem* next = malloc_cache_head->next;
+            delete []malloc_cache_head;
+            malloc_cache_head = next;
+        }
+    }
+
+    static void* malloc_cache()
+    {
+        if(malloc_cache_head!=nullptr)
+        {
+            MallocItem* ret = malloc_cache_head;
+            malloc_cache_head = malloc_cache_head->next;
+            return ret->data;
+        }
+
+        MallocItem* mi = reinterpret_cast<MallocItem*>(new char[malloc_cache_item_size + sizeof(MallocItem*)]);
+        return mi->data;
+    }
+
+    static void malloc_cache_free(void* data)
+    {
+        MallocItem* mi = reinterpret_cast<MallocItem*>(reinterpret_cast<char*>(data) - sizeof(MallocItem*));
+        mi->next = malloc_cache_head;
+        malloc_cache_head = mi;
+    }
+
     template<typename T>
     struct io_uring_promise_type
     {
@@ -207,8 +246,7 @@ struct fuse_io_context
                     else
                     {
                         DBG_PRINT(std::cout << "promise final no awaiter" << std::endl);
-                    }
-                    
+                    }                    
                 }
 
             private:
@@ -220,6 +258,24 @@ struct fuse_io_context
         void unhandled_exception()
         {
             abort();
+        }
+
+        void* operator new(std::size_t count)
+        {
+            if(count <= malloc_cache_item_size)
+            {
+                return malloc_cache();
+            }
+            return ::new char[count];
+        }
+        void operator delete(void* ptr, std::size_t sz) noexcept
+        {
+            if(sz <= malloc_cache_item_size)
+            {
+                malloc_cache_free(ptr);
+                return;
+            }
+            ::delete (sz, reinterpret_cast<char*>(ptr));
         }
 
         std::coroutine_handle<> awaiter;

@@ -1049,5 +1049,7 @@ int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_backgr
         close(p);
     }
 
+    fuse_io_context::clear_malloc_cache();
+
     return rc;
 }
