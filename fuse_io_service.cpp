@@ -6,7 +6,7 @@
 
 
 fuse_io_service::fuse_io_service(FuseRing fuse_ring)
- : fuse_ring(fuse_ring)
+ : fuse_ring(std::move(fuse_ring)), last_rc(0)
 {
 }
 
@@ -48,34 +48,15 @@ int fuse_io_service::fuseuring_submit(bool block)
         }
         fuse_ring.ring_submit=false;
     }
-    return 0;
-}
-
-int fuse_io_service::run_sqe_awaiters()
-{
-    if(sqe_awaiters!=nullptr)
+    else if(block)
     {
-        if(int rc; (rc=fuseuring_submit(false))!=0)
-            return rc;
-    }
-
-    while(sqe_awaiters!=nullptr)
-    {
-        struct io_uring_sqe *sqe = io_uring_get_sqe(fuse_ring.ring);
-
-        if(sqe)
+        int rc = io_uring_submit_and_wait(fuse_ring.ring, 1);
+        if(rc<0)
         {
-            IoUringSqeAwaiter* curr = sqe_awaiters;
-            sqe_awaiters = curr->next;
-            curr->sqe = sqe;
-            curr->awaiter.resume();
-        }            
-        else
-        {
-            break;
+            perror("Error submitting to fuse io_uring (2).");
+            return 18;
         }
     }
-
     return 0;
 }
 
@@ -83,91 +64,46 @@ int fuse_io_service::run(queue_fuse_read_t queue_read)
 {
     fuse_ring.ring_submit = false;
 
-    std::vector<io_uring_task<int> > tasks;
     while(true)
     {
-        if(int rc; (rc=run_sqe_awaiters())!=0)
-            return rc;
-
         while(!fuse_ring.ios.empty())
         {
-            io_uring_task task = queue_read(*this);
-            
-            if(task.has_res())
-            {
-                int rc = task.res();
-
-                if(rc<0)
-                {
-                    std::cerr << "Error after running task (1): " << rc << std::endl;
-                    return 20;
-                }
-            }
-            else
-            {
-                tasks.push_back(std::move(task));
-            }
+            queue_read_set_rc(queue_read);
         }
-
-        if(int rc; (rc=run_sqe_awaiters())!=0)
-            return rc;
 
         if(int rc; (rc=fuseuring_submit(true))!=0)
             return rc;
 
-        int nr_comp = 0;
-        while(true)
-        {
-            struct io_uring_cqe *cqe;
-            if(nr_comp==0)
-            {
-                int rc = io_uring_wait_cqe(fuse_ring.ring, &cqe);
-                if(rc<0)
-                {
-                    perror("Waiting for fuse iouring cqe failed.");
-                    return 16;
-                }
-            }
-            else
-            {
-                int rc = io_uring_peek_cqe(fuse_ring.ring, &cqe);
-                if(rc!=0)
-                {
-                    break;
-                }
-            }           
 
+        unsigned head;
+        unsigned count=0;
+        struct io_uring_cqe *cqe;
+        io_uring_for_each_cqe(fuse_ring.ring, head, cqe)
+        {
             int rc = fuseuring_handle_cqe(cqe);
             if(rc<0)
             {
                 std::cerr << "Error handling cqe rc=" << rc << std::endl;
                 return 17;
             }
-
-            io_uring_cqe_seen(fuse_ring.ring, cqe);
-
-            ++nr_comp;
+            ++count;
         }
+        io_uring_cq_advance(fuse_ring.ring, count);
 
-        std::vector<io_uring_task<int> > new_tasks;
-        for(auto& task: tasks)
+        if(last_rc)
         {
-            if(task.has_res())
-            {
-                int rc = task.res();
-
-                if(rc<0)
-                {
-                    std::cerr << "Error running task (2). rc: " << rc << std::endl;
-                    return 18;                    
-                }
-            }
-            else
-            {
-                new_tasks.push_back(std::move(task));
-            }            
+            std::cerr << "Task failed rc=" << last_rc << ". Shutting down." << std::endl;
+            return 19;
         }
-
-        std::swap(tasks, new_tasks);
     }
+}
+
+fuse_io_service::io_uring_task_discard<int> fuse_io_service::queue_read_set_rc(queue_fuse_read_t queue_read)
+{
+    int rc = co_await queue_read(*this);
+    if(rc!=0)
+    {
+        last_rc=rc;
+    }
+    co_return rc;
 }

@@ -4,15 +4,16 @@
 #include <coroutine>
 #include <vector>
 #include <liburing.h>
-#include <stack>
 #include <utility>
 #include <assert.h>
 #include <iostream>
+#include <unistd.h>
+#include <memory>
 
 #define DBG_PRINT(x)
 
 /*
-for clang and libc++
+//for clang and libc++
 namespace std
 {
     template<typename T = void>
@@ -21,7 +22,8 @@ namespace std
     using suspend_never = std::experimental::suspend_never;
 
     using suspend_always = std::experimental::suspend_always;
-}*/
+}
+*/
 
 static uint64_t handle_v(std::coroutine_handle<> p_awaiter)
 {
@@ -118,53 +120,34 @@ struct fuse_io_service
         return IoUringAwaiter<std::pair<io_uring_sqe*, io_uring_sqe*> >({sqes.first, sqes.second});
     }
 
-    struct IoUringSqeAwaiter;
-    IoUringSqeAwaiter* sqe_awaiters = nullptr;
-
-    struct IoUringSqeAwaiter
-    {
-        IoUringSqeAwaiter(fuse_io_service& io, struct io_uring* uring)
-         : io(io), next(nullptr)
-        {
-            sqe = io_uring_get_sqe(uring);
-        }
-
-        IoUringSqeAwaiter(IoUringSqeAwaiter const&) = delete;
-	    IoUringSqeAwaiter(IoUringSqeAwaiter&& other) = delete;
-	    IoUringSqeAwaiter& operator=(IoUringSqeAwaiter&&) = delete;
-	    IoUringSqeAwaiter& operator=(IoUringSqeAwaiter const&) = delete;
-
-        bool await_ready() const noexcept
-        {
-            return sqe!=nullptr;
-        }
-
-        void await_suspend(std::coroutine_handle<> p_awaiter) noexcept
-        {
-            DBG_PRINT(std::cout << "Await suspend sqe "<< handle_v(p_awaiter) << std::endl);
-            awaiter = p_awaiter;
-            if(io.sqe_awaiters!=nullptr)
-            {
-                next = io.sqe_awaiters;    
-            }
-            io.sqe_awaiters = this;
-        }
-
-        struct io_uring_sqe* await_resume() const noexcept
-        {
-            return sqe;
-        }
-
-        fuse_io_service& io;
-        std::coroutine_handle<> awaiter;
-        IoUringSqeAwaiter* next;
-        struct io_uring_sqe *sqe;              
-    };
-
-    [[nodiscard]] auto get_sqe()
+    io_uring_sqe* get_sqe() noexcept
     {
         fuse_ring.ring_submit=true;
-        return IoUringSqeAwaiter(*this, fuse_ring.ring);
+        auto ret = io_uring_get_sqe(fuse_ring.ring);
+        if(ret==nullptr)
+        {
+            /* Needs newer Linux 5.10
+            int rc = io_uring_sqring_wait(fuse_ring.ring);
+            if(rc<0)
+            {
+                return nullptr;
+            }
+            else if(rc==0)
+            {*/
+                int rc = io_uring_submit(fuse_ring.ring);
+                if(rc<0)
+                {
+                    perror("io_uring_submit failed in get_sqe");
+                    return nullptr;
+                }
+
+                do
+                { 
+                    ret = io_uring_get_sqe(fuse_ring.ring);
+                } while (ret==nullptr);
+            //}
+        }
+        return ret;
     }
 
     template<typename T>
@@ -190,8 +173,11 @@ struct fuse_io_service
 
         void return_value(T v)
         {
-            res_state = e_res_state::Res;
-            res = v;
+            if(res_state!=e_res_state::Detached)
+            {
+                res_state = e_res_state::Res;
+                res = v;
+            }
         }
 
         auto initial_suspend() { 
@@ -324,9 +310,8 @@ struct fuse_io_service
         handle coro_h;
     };
 
-    struct SFuseIo
+    struct FuseIo
     {
-        char type;
         int pipe[2];
         char* header_buf;
         size_t header_buf_idx;
@@ -334,9 +319,50 @@ struct fuse_io_service
         size_t scratch_buf_idx;
     };
 
+    struct FuseIoVal
+    {
+        FuseIoVal(fuse_io_service& io_service,
+            std::unique_ptr<FuseIo> fuse_io)
+         : io_service(io_service),
+            fuse_io(std::move(fuse_io))
+        {
+
+        }
+
+        ~FuseIoVal()
+        {
+            io_service.release_fuse_io(std::move(fuse_io));
+        }
+
+        FuseIo& get() const noexcept
+        {
+            return *fuse_io.get();
+        }
+
+        FuseIo* operator->() const noexcept
+        {
+            return fuse_io.get();
+        }
+
+    private:
+        fuse_io_service& io_service;
+        std::unique_ptr<FuseIo> fuse_io;
+    };
+
     struct FuseRing
     {
-        std::stack<SFuseIo*> ios;
+        FuseRing()
+            : ring(nullptr), fd(-1), ring_submit(false),
+                max_bufsize(1*1024*1024), backing_fd(-1),
+                backing_fd_orig(-1), backing_f_size(0)
+                {}
+
+        FuseRing(FuseRing&&) = default;
+        FuseRing(FuseRing const&) = delete;
+	    FuseRing& operator=(FuseRing&&) = delete;
+	    FuseRing& operator=(FuseRing const&) = delete;
+
+        std::vector<std::unique_ptr<FuseIo> > ios;
         struct io_uring* ring;
         int fd;
         bool ring_submit;
@@ -349,25 +375,42 @@ struct fuse_io_service
     FuseRing fuse_ring;
 
     fuse_io_service(FuseRing fuse_ring);
+    fuse_io_service(fuse_io_service const&) = delete;
+	fuse_io_service(fuse_io_service&& other) = delete;
+	fuse_io_service& operator=(fuse_io_service&&) = delete;
+	fuse_io_service& operator=(fuse_io_service const&) = delete;
 
     typedef fuse_io_service::io_uring_task<int> (*queue_fuse_read_t)(fuse_io_service& io);
 
     int run(queue_fuse_read_t queue_read);
 
-    SFuseIo* get_fuse_io()
+    FuseIoVal get_fuse_io()
     {
-        fuse_io_service::SFuseIo* fuse_io = fuse_ring.ios.top();
-        fuse_ring.ios.pop();
-        return fuse_io;
+        std::unique_ptr<FuseIo> fuse_io = std::move(fuse_ring.ios.back());
+        fuse_ring.ios.pop_back();
+        return FuseIoVal(*this, std::move(fuse_io));
     }
 
-    void release_fuse_io(SFuseIo* fuse_io)
+    void release_fuse_io(std::unique_ptr<FuseIo> fuse_io)
     {
-        fuse_ring.ios.push(fuse_io);
+        fuse_ring.ios.push_back(std::move(fuse_io));
     }
 
 private:
+
+    template<typename T>
+    struct io_uring_task_discard : io_uring_task<T>
+    {
+        io_uring_task_discard(io_uring_task<T>&& other) noexcept
+            : io_uring_task<T>(std::move(other))
+        {
+        }
+    };
+
+    fuse_io_service::io_uring_task_discard<int> queue_read_set_rc(queue_fuse_read_t queue_read);
+
     int fuseuring_handle_cqe(struct io_uring_cqe *cqe);
     int fuseuring_submit(bool block);
-    int run_sqe_awaiters();
+    
+    int last_rc;
 };

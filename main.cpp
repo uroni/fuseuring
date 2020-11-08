@@ -10,6 +10,7 @@
 #include <sys/resource.h>
 #include <sys/mman.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #ifndef PR_SET_IO_FLUSHER
 #define PR_SET_IO_FLUSHER 57
@@ -59,5 +60,9 @@ int main(int argc, char* argv[])
 
     int fuse_max_background = atoi(argv[4]);
 
-    return fuseuring_main(backing_fd, argv[2], fuse_max_background, fuse_max_background+1000);
+    rc = fuseuring_main(backing_fd, argv[2], fuse_max_background, fuse_max_background+1000);
+
+    close(backing_fd);
+
+    return rc;
 }
