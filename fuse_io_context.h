@@ -37,8 +37,8 @@ struct fuse_io_context
     {
         struct IoUringAwaiterGlobalRes
         {
-            size_t tocomplete;
             std::coroutine_handle<> awaiter;
+            uint8_t tocomplete;
         };
 
         struct IoUringAwaiterRes
@@ -120,8 +120,39 @@ struct fuse_io_context
         return IoUringAwaiter<std::pair<io_uring_sqe*, io_uring_sqe*> >({sqes.first, sqes.second});
     }
 
-    io_uring_sqe* get_sqe() noexcept
+    io_uring_sqe* get_sqe(unsigned int peek=1) noexcept
     {
+        if(peek>1)
+        {
+            while(true)
+            {
+                struct io_uring_sq *sq = &fuse_ring.ring->sq;
+                unsigned int head = io_uring_smp_load_acquire(sq->khead);        
+                unsigned int tail = sq->sqe_tail;
+                struct io_uring_sqe *__sqe = NULL;
+
+                if (tail - head < *sq->kring_entries &&
+                    *sq->kring_entries - (tail - head) >= peek)
+                {
+                    io_uring_sqe* sqe = &sq->sqes[sq->sqe_tail & *sq->kring_mask];
+		            sq->sqe_tail = tail + 1;
+                    return sqe;
+                }
+
+                int rc = io_uring_submit(fuse_ring.ring);
+                if(rc<0 && errno!=EBUSY)
+                {
+                    perror("io_uring_submit failed in get_sqe");
+                    return nullptr;
+                }
+                else if(rc<0)
+                {
+                    std::cout << "io_uring_submit: EBUSY" << std::endl;
+                    sleep(0);
+                }                
+            }
+        }
+
         fuse_ring.ring_submit=true;
         auto ret = io_uring_get_sqe(fuse_ring.ring);
         if(ret==nullptr)

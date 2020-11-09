@@ -36,16 +36,29 @@ int fuse_io_context::fuseuring_submit(bool block)
 {
     if(fuse_ring.ring_submit)
     {
-        int rc;
-        if(block)
-            rc = io_uring_submit_and_wait(fuse_ring.ring, 1);
-        else
-            rc = io_uring_submit(fuse_ring.ring);
-
-        if(rc<0)
+        while(true)
         {
-            perror("Error submitting to fuse io_uring.");
-            return 18;
+            int rc;
+            if(block)
+                rc = io_uring_submit_and_wait(fuse_ring.ring, 1);
+            else
+                rc = io_uring_submit(fuse_ring.ring);
+
+            if(rc<0 && errno!=EBUSY)
+            {
+                perror("Error submitting to fuse io_uring.");
+                return 18;
+            }
+            else if(rc<0)
+            {
+                std::cout << "io_uring_submit(2): EBUSY" << std::endl;
+            }
+            else
+            {
+                break;
+            }
+
+            sleep(0);
         }
         fuse_ring.ring_submit=false;
     }

@@ -86,7 +86,7 @@ namespace
 [[nodiscard]] fuse_io_context::io_uring_task<int> send_reply(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io)
 {
     struct io_uring_sqe *sqe;
-    sqe = io.get_sqe();
+    sqe = io.get_sqe(2);
     if(sqe==nullptr)
         co_return -1;
 
@@ -121,7 +121,7 @@ namespace
     const std::vector<char>& buf)
 {
     struct io_uring_sqe *sqe;
-    sqe = io.get_sqe();
+    sqe = io.get_sqe(2);
     if(sqe==nullptr)
         co_return -1;
 
@@ -358,7 +358,7 @@ namespace
     out_header->len = sizeof(fuse_out_header) + read_size;
     out_header->unique = fheader->unique;
 
-    io_uring_sqe* sqe1 = io.get_sqe();
+    io_uring_sqe* sqe1 = io.get_sqe(3);
     if(sqe1==nullptr)
         co_return -1;
 
@@ -507,7 +507,7 @@ namespace
     write_out->size = write_size;
     write_out->padding = 0;
 
-    io_uring_sqe* sqe1 = io.get_sqe();
+    io_uring_sqe* sqe1 = io.get_sqe(3);
     if(sqe1==nullptr)
         co_return -1;
 
@@ -650,7 +650,7 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
     fuse_io_context::FuseIoVal fuse_io = io.get_fuse_io();
 
     DBG_PRINT(std::cout << "queue_fuse_read" << std::endl);
-    struct io_uring_sqe *sqe1 = io.get_sqe();
+    struct io_uring_sqe *sqe1 = io.get_sqe(2);
     struct io_uring_sqe *sqe2 = io.get_sqe();
     if(sqe1==nullptr || sqe2==nullptr)
         co_return -1;
