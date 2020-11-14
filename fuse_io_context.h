@@ -187,7 +187,7 @@ struct fuse_io_context
         char data[];
     };
 
-    static MallocItem* malloc_cache_head;
+    thread_local static MallocItem* malloc_cache_head;
     static constexpr size_t malloc_cache_item_size = 500;
 
     static void clear_malloc_cache()

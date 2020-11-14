@@ -6,7 +6,7 @@ FMNT=/media/test
 BMNT=/media/bench
 mkdir -p "$FMNT"
 mkdir -p "$BMNT"
-./fuseuring /tmp/backing_file.img "$FMNT" $((500*1024*1024)) 5000 &
+./fuseuring /tmp/backing_file.img "$FMNT" $((500*1024*1024)) 100 5000 4 &
 while ! test -e "$FMNT/volume"; do sleep 1; done
 LODEV=$(losetup --find --show "$FMNT/volume" --direct-io=on)
 mkfs.ext4 -F $LODEV

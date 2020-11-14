@@ -4,7 +4,7 @@
 #include <liburing.h>
 #include <iostream>
 
-fuse_io_context::MallocItem* fuse_io_context::malloc_cache_head = nullptr;
+thread_local fuse_io_context::MallocItem* fuse_io_context::malloc_cache_head = nullptr;
 
 fuse_io_context::fuse_io_context(FuseRing fuse_ring)
  : fuse_ring(std::move(fuse_ring)), last_rc(0)

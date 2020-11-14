@@ -18,9 +18,9 @@
 
 int main(int argc, char* argv[])
 {
-    if(argc<5)
+    if(argc<6)
     {
-        std::cerr << "Not enough arguments ./fuseuring [backing file path] [fuse mount path] [backing file size] [fuse max_background]" << std::endl;
+        std::cerr << "Not enough arguments ./fuseuring [backing file path] [fuse mount path] [backing file size] [fuse max ios] [fuse max_background] [number of threads]" << std::endl;
         return 101;
     }
 
@@ -58,9 +58,12 @@ int main(int argc, char* argv[])
         perror("Error increasing RLIMIT_MEMLOCK");
     }
 
-    int fuse_max_background = atoi(argv[4]);
+    int fuse_max_ios = atoi(argv[4]);
+    int fuse_max_background = atoi(argv[5]);
+    size_t n_threads = static_cast<size_t>(atoi(argv[6]));
 
-    rc = fuseuring_main(backing_fd, argv[2], fuse_max_background, fuse_max_background+1000);
+    rc = fuseuring_main(backing_fd, argv[2], fuse_max_ios, 
+        fuse_max_background, fuse_max_background+1000, n_threads);
 
     close(backing_fd);
 
