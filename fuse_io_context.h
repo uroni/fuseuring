@@ -221,9 +221,9 @@ struct fuse_io_context
     }
 
     template<typename T>
-    struct io_uring_promise_type
+    struct io_uring_promise_type_base
     {
-        using promise_type = io_uring_promise_type<T>;
+        using promise_type = io_uring_promise_type_base<T>;
         using handle = std::coroutine_handle<promise_type>;
 
         enum class e_res_state
@@ -233,22 +233,8 @@ struct fuse_io_context
             Res
         };
 
-        io_uring_promise_type() 
+        io_uring_promise_type_base() 
             : res_state(e_res_state::Init) {}
-
-        auto get_return_object() 
-        {
-            return io_uring_task<T>{handle::from_promise(*this)};
-        }
-
-        void return_value(T v)
-        {
-            if(res_state!=e_res_state::Detached)
-            {
-                res_state = e_res_state::Res;
-                res = v;
-            }
-        }
 
         auto initial_suspend() { 
             return std::suspend_never{}; 
@@ -312,7 +298,28 @@ struct fuse_io_context
         std::coroutine_handle<> awaiter;
         
         e_res_state res_state;
+    };
+
+    template<typename T>
+    struct io_uring_promise_type : io_uring_promise_type_base<T>
+    {
+        using handle = std::coroutine_handle<io_uring_promise_type<T> >;
+
         T res;
+
+        auto get_return_object() 
+        {
+            return io_uring_task<T>{handle::from_promise(*this)};
+        }
+
+        void return_value(T v)
+        {
+            if(io_uring_promise_type_base<T>::res_state!=io_uring_promise_type_base<T>::e_res_state::Detached)
+            {
+                io_uring_promise_type_base<T>::res_state = io_uring_promise_type_base<T>::e_res_state::Res;
+                res = std::move(v);
+            }
+        }
     };
 
     template<typename T>
@@ -358,13 +365,7 @@ struct fuse_io_context
         bool has_res() const noexcept
         {
             return coro_h.promise().res_state == promise_type::e_res_state::Res;
-        }
-
-        T res() const noexcept
-        {
-            assert(has_res());
-            return coro_h.promise().res;
-        }
+        }       
 
         bool await_ready() const noexcept
         {
@@ -388,12 +389,20 @@ struct fuse_io_context
             coro_h.promise().awaiter = p_awaiter;
         }
 
-        T await_resume() const noexcept
+        template<typename U = T, std::enable_if_t<std::is_same<U, void>::value, int> = 0>
+        void await_resume() const noexcept
         {
-            return res();
+            assert(has_res());
         }
 
-    private:
+        template<typename U = T, std::enable_if_t<!std::is_same<U, void>::value, int> = 0>
+        T await_resume() const noexcept
+        {
+            assert(has_res());
+            return std::move(coro_h.promise().res);
+        }
+
+    protected:
         handle coro_h;
     };
 
@@ -500,4 +509,23 @@ private:
     int fuseuring_submit(bool block);
     
     int last_rc;
+};
+
+template<>
+struct fuse_io_context::io_uring_promise_type<void> : fuse_io_context::io_uring_promise_type_base<void>
+{
+    using handle = std::coroutine_handle<fuse_io_context::io_uring_promise_type<void> >;
+
+    auto get_return_object() 
+    {
+        return io_uring_task<void>{handle::from_promise(*this)};
+    }
+
+    void return_void()
+    {
+        if(fuse_io_context::io_uring_promise_type_base<void>::res_state!=fuse_io_context::io_uring_promise_type_base<void>::e_res_state::Detached)
+        {
+            fuse_io_context::io_uring_promise_type_base<void>::res_state = fuse_io_context::io_uring_promise_type_base<void>::e_res_state::Res;
+        }
+    }
 };
