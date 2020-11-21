@@ -184,7 +184,6 @@ struct fuse_io_context
     struct MallocItem
     {
         MallocItem* next;
-        char data[];
     };
 
     thread_local static MallocItem* malloc_cache_head;
@@ -195,7 +194,7 @@ struct fuse_io_context
         while(malloc_cache_head)
         {
             MallocItem* next = malloc_cache_head->next;
-            delete []malloc_cache_head;
+            delete []reinterpret_cast<char*>(malloc_cache_head);
             malloc_cache_head = next;
         }
     }
@@ -206,16 +205,15 @@ struct fuse_io_context
         {
             MallocItem* ret = malloc_cache_head;
             malloc_cache_head = malloc_cache_head->next;
-            return ret->data;
+            return ret;
         }
 
-        MallocItem* mi = reinterpret_cast<MallocItem*>(new char[malloc_cache_item_size + sizeof(MallocItem*)]);
-        return mi->data;
+        return new char[malloc_cache_item_size];
     }
 
     static void malloc_cache_free(void* data)
     {
-        MallocItem* mi = reinterpret_cast<MallocItem*>(reinterpret_cast<char*>(data) - sizeof(MallocItem*));
+        MallocItem* mi = reinterpret_cast<MallocItem*>(data);
         mi->next = malloc_cache_head;
         malloc_cache_head = mi;
     }
