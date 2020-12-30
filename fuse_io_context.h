@@ -406,6 +406,7 @@ struct fuse_io_context
 
     struct FuseIo
     {
+        int fuse_fd;
         int pipe[2];
         char* header_buf;
         size_t header_buf_idx;
@@ -446,7 +447,7 @@ struct fuse_io_context
     struct FuseRing
     {
         FuseRing()
-            : ring(nullptr), fd(-1), ring_submit(false),
+            : ring(nullptr), ring_submit(false),
                 max_bufsize(1*1024*1024), backing_fd(-1),
                 backing_fd_orig(-1), backing_f_size(0)
                 {}
@@ -458,7 +459,6 @@ struct fuse_io_context
 
         std::vector<std::unique_ptr<FuseIo> > ios;
         struct io_uring* ring;
-        int fd;
         bool ring_submit;
         size_t max_bufsize;
         int backing_fd;

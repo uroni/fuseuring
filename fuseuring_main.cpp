@@ -135,7 +135,7 @@ namespace
     io_uring_sqe *sqe2 = io.get_sqe();
 
     io_uring_prep_splice(sqe2, fuse_io->pipe[0],
-        -1, io.fuse_ring.fd, -1, reply_size,
+        -1, fuse_io->fuse_fd, -1, reply_size,
         SPLICE_F_MOVE| SPLICE_F_FD_IN_FIXED | SPLICE_F_NONBLOCK);
     sqe2->flags |= IOSQE_FIXED_FILE;
     
@@ -171,7 +171,7 @@ namespace
         co_return -1;
 
     io_uring_prep_splice(sqe2, fuse_io->pipe[0],
-        -1, io.fuse_ring.fd, -1, buf.size(),
+        -1, fuse_io->fuse_fd, -1, buf.size(),
         SPLICE_F_MOVE| SPLICE_F_FD_IN_FIXED | SPLICE_F_NONBLOCK);
     sqe2->flags |= IOSQE_FIXED_FILE;
     
@@ -416,7 +416,7 @@ namespace
         co_return -1;
 
     io_uring_prep_splice(sqe3, fuse_io->pipe[0],
-        -1, io.fuse_ring.fd, -1, out_header->len,
+        -1, fuse_io->fuse_fd, -1, out_header->len,
         SPLICE_F_MOVE | SPLICE_F_FD_IN_FIXED | SPLICE_F_NONBLOCK);
     sqe3->flags |= IOSQE_FIXED_FILE;
     
@@ -565,7 +565,7 @@ namespace
         co_return -1;
 
     io_uring_prep_splice(sqe3, fuse_io->pipe[0],
-        -1, io.fuse_ring.fd, -1, out_header->len,
+        -1, fuse_io->fuse_fd, -1, out_header->len,
         SPLICE_F_MOVE| SPLICE_F_FD_IN_FIXED | SPLICE_F_NONBLOCK);
     sqe3->flags |= IOSQE_FIXED_FILE;
 
@@ -690,7 +690,7 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
     if(sqe1==nullptr || sqe2==nullptr)
         co_return -1;
 
-    io_uring_prep_splice(sqe1, io.fuse_ring.fd, -1, fuse_io->pipe[1],
+    io_uring_prep_splice(sqe1, fuse_io->fuse_fd, -1, fuse_io->pipe[1],
         -1, io.fuse_ring.max_bufsize, SPLICE_F_MOVE|SPLICE_F_NONBLOCK|SPLICE_F_FD_IN_FIXED);      
     sqe1->flags |= IOSQE_IO_HARDLINK | IOSQE_FIXED_FILE;
 
@@ -860,6 +860,25 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
     co_return rc;
 }
 
+int clone_fuse_fd(int fuse_fd)
+{
+    int session_fd = open("/dev/fuse", O_RDWR | O_CLOEXEC);
+    if(session_fd==-1)
+    {
+        perror("Error opening /dev/fuse -2.");
+        return -1;
+    }
+
+    int rc = ioctl(session_fd, FUSE_DEV_IOC_CLONE, &fuse_fd);
+    if(rc==-1)
+    {
+        perror("Error cloning fuse fd");
+        return -1;
+    }
+
+    return session_fd;
+}
+
 int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_fuse_ios, 
     int max_background, int congestion_threshold, size_t n_threads)
 {
@@ -1019,23 +1038,8 @@ int fuseuring_main(int backing_fd, const std::string& mountpoint, int max_fuse_i
             threads.push_back(std::thread( [max_fuse_ios, 
                     max_write, backing_fd, fuse_fd, &thread_rc, i, &fuse_uring] () {
 
-                int session_fd = open("/dev/fuse", O_RDWR | O_CLOEXEC);
-                if(session_fd==-1)
-                {
-                    perror("Error opening /dev/fuse -2.");
-                    thread_rc=2;
-                    return;
-                }
-
-                int rc = ioctl(session_fd, FUSE_DEV_IOC_CLONE, &fuse_fd);
-                if(rc==-1)
-                {
-                    perror("Error cloning fuse fd");
-                    thread_rc=3;
-                }
-
-                rc = fuseuring_run(max_fuse_ios, 
-                        max_write, backing_fd, session_fd,
+                int rc = fuseuring_run(max_fuse_ios, 
+                        max_write, backing_fd, fuse_fd,
                         i==0 ? &fuse_uring : nullptr,
                         i==0 ? 0 : fuse_uring.ring_fd);
                 if(rc!=0)
@@ -1079,12 +1083,9 @@ int fuseuring_run(int max_fuse_ios, size_t max_write,
     }
     
     std::vector<int> fixed_fds;
-    fixed_fds.push_back(fuse_fd);
-    int fuse_fixed_fd = 0;
     std::vector<struct iovec> reg_buffers;
 
     fuse_io_context::FuseRing fuse_ring;
-    fuse_ring.fd = fuse_fixed_fd;
     fuse_ring.backing_fd = fixed_fds.size();
     fixed_fds.push_back(backing_fd);
     fuse_ring.backing_fd_orig = backing_fd;
@@ -1141,6 +1142,13 @@ int fuseuring_run(int max_fuse_ios, size_t max_write,
         new_io->scratch_buf = scratch_buf;
         scratch_buf+=scratch_buf_size;
         new_io->scratch_buf_idx = scratch_buf_idx;
+
+        int session_fd = clone_fuse_fd(fuse_fd);
+        if(session_fd==-1)
+            return 13;
+
+        new_io->fuse_fd = fixed_fds.size();
+        fixed_fds.push_back(session_fd);        
 
         fuse_ring.ios.push_back(std::move(new_io));
     }
