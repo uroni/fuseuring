@@ -18,8 +18,9 @@
 
 namespace
 {
-    const size_t fuse_max_pages = 32;  
-    const size_t header_buf_size = std::max(sizeof(fuse_in_header), sizeof(fuse_out_header) + sizeof(fuse_write_out));
+    const size_t fuse_max_pages = 256;  
+    const size_t header_buf_size = std::max(sizeof(fuse_in_header) + sizeof(fuse_write_in), 
+                                        sizeof(fuse_out_header) + sizeof(fuse_write_out));
     const size_t scratch_buf_size = std::max(std::max(std::max(
                         static_cast<size_t>(4096), 
                         sizeof(fuse_out_header)+sizeof(fuse_attr_out)),
@@ -34,38 +35,71 @@ namespace
 }
 
 [[nodiscard]] fuse_io_context::io_uring_task<char*> read_rbytes(fuse_io_context& io, fuse_io_context::FuseIoVal& fuse_io,
-    size_t rbytes, bool add_zero, std::vector<char>& free_buf)
+    size_t rbytes, bool add_zero, size_t init_read, std::vector<char>& free_buf)
 {
     if(rbytes==0)
     {
         co_return fuse_io->scratch_buf;
     }
 
-    struct io_uring_sqe *sqe;
-    sqe = io.get_sqe();
-    if(sqe==nullptr)
-        co_return nullptr;
+    bool io_read=true;
+    if(init_read==rbytes)
+    {
+        if(add_zero)
+            io_read=false;
+        else
+            co_return fuse_io->header_buf + sizeof(fuse_in_header);
+    }
 
-    DBG_PRINT(std::cout << "Read rbytes "<< rbytes << std::endl);
     bool read_fixed=false;
     if(rbytes + (add_zero ? 1 : 0) < scratch_buf_size)
     {
+        if(init_read>0)
+            memcpy(fuse_io->scratch_buf, fuse_io->header_buf + sizeof(fuse_in_header), init_read);
+
         read_fixed=true;
-        io_uring_prep_read_fixed(sqe, fuse_io->pipe[0], fuse_io->scratch_buf,
-            rbytes, 0, fuse_io->scratch_buf_idx);
     }
     else
     {
         free_buf.resize(rbytes + (add_zero ? 1 : 0));
-        io_uring_prep_read(sqe, fuse_io->pipe[0], &free_buf[0],
-                rbytes, 0);
+        
+        if(init_read>0)
+            memcpy(free_buf.data(), fuse_io->header_buf + sizeof(fuse_in_header), init_read);
     }
-    sqe->flags |= IOSQE_FIXED_FILE;
-    int rc = co_await io.complete(sqe);
 
-    if(rc<0 || rc<rbytes)
+    if(io_read)
     {
-        co_return nullptr;
+        size_t read_done = init_read;
+        do
+        {
+            io_uring_sqe *sqe = io.get_sqe();
+            if(sqe==nullptr)
+                co_return nullptr;
+
+            DBG_PRINT(std::cout << "Read rbytes "<< rbytes << " init read " << init_read << std::endl);
+            
+            if(read_fixed)
+            {
+                io_uring_prep_read_fixed(sqe, fuse_io->pipe[0], fuse_io->scratch_buf + read_done,
+                        rbytes - read_done, 0, fuse_io->scratch_buf_idx);
+            }
+            else
+            {
+                io_uring_prep_read(sqe, fuse_io->pipe[0], &free_buf[read_done],
+                            rbytes-read_done, 0);
+            }
+
+            sqe->flags |= IOSQE_FIXED_FILE;
+            int rc = co_await io.complete(sqe);
+
+            if(rc<=0)
+            {
+                co_return nullptr;
+            }
+
+            read_done+=rc;
+
+        } while(read_done<rbytes);
     }
 
     if(read_fixed)
@@ -661,26 +695,54 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
     sqe1->flags |= IOSQE_IO_HARDLINK | IOSQE_FIXED_FILE;
 
     io_uring_prep_read_fixed(sqe2, fuse_io->pipe[0], fuse_io->header_buf,
-            sizeof(fuse_in_header), 0, fuse_io->header_buf_idx);
+            sizeof(fuse_in_header) + sizeof(fuse_write_in), 0, fuse_io->header_buf_idx);
     sqe2->flags |= IOSQE_FIXED_FILE;
 
-    auto [rbytes, res] = co_await io.complete(std::make_pair(sqe1, sqe2));
+    auto [rbytes, init_read] = co_await io.complete(std::make_pair(sqe1, sqe2));
 
-    if(rbytes<0)
+    if(rbytes<0 || rbytes<sizeof(fuse_in_header))
     {
-        //std::cerr << "Error reading from fuse" << std::endl;
+        static bool erronce=true;
+        if(erronce)
+        {
+            std::cerr << "Error reading from fuse rc=" << rbytes << std::endl;
+            erronce=false;
+        }
         co_return -1;
     }
 
-    if(res<0 || res<sizeof(fuse_in_header))
+    if(init_read>0 && init_read<sizeof(fuse_in_header))
     {
-        std::cerr << "Error reading fuse_in_header res: " << res << std::endl;
+        do
+        {
+            io_uring_sqe *sqe = io.get_sqe();
+            io_uring_prep_read_fixed(sqe, fuse_io->pipe[0], fuse_io->header_buf + init_read,
+                sizeof(fuse_in_header)-init_read, 0, fuse_io->header_buf_idx);
+            sqe->flags |= IOSQE_FIXED_FILE;
+
+            int rc = co_await io.complete(sqe);
+
+            if(rc<=0)
+            {
+                std::cerr << "Error reading fuse_in_header after short read res: " << rc << std::endl;
+                co_return -1;
+            }
+
+            init_read+=rc;
+
+        } while(init_read<sizeof(fuse_in_header));
+    }
+    
+
+    if(init_read<0 || init_read<sizeof(fuse_in_header))
+    {
+        std::cerr << "Error reading fuse_in_header res: " << init_read << std::endl;
         co_return -1;
     }
 
     fuse_in_header* fheader = reinterpret_cast<fuse_in_header*>(fuse_io->header_buf);
 
-    DBG_PRINT(std::cout << "## fheader opcode: "<< fheader->opcode << " unique: "<< fheader->unique << std::endl);
+    DBG_PRINT(std::cout << "## fheader opcode: "<< fheader->opcode << " unique: "<< fheader->unique << " rbytes: " << rbytes << " init_read: " << init_read << std::endl);
 
     size_t req_read_rbytes = 0;
     bool req_read_add_zero=false;
@@ -734,7 +796,7 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
         }
 
         rbytes_buf = co_await read_rbytes(io, fuse_io, req_read_rbytes, 
-            req_read_add_zero, rbytes_buf_d);
+            req_read_add_zero, init_read - sizeof(fuse_in_header), rbytes_buf_d);
         if(rbytes_buf==nullptr)
         {
             co_return -1;
