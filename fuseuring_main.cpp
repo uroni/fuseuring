@@ -94,6 +94,7 @@ namespace
 
             if(rc<=0)
             {
+                std::cerr << "Reading rbytes failed rc=" << rc << std::endl;
                 co_return nullptr;
             }
 
@@ -425,7 +426,12 @@ namespace
     for(int rc: rcs)
     {
         if(rc<0)
+        {
+            std::cerr << "handle_read failed. rcs=" << 
+                rcs[0] << ", " << rcs[1] << ", " <<
+                rcs[2] << std::endl;
             co_return -1;
+        }
     }
 
     if(rcs[0]<sizeof(fuse_out_header))
@@ -587,6 +593,9 @@ namespace
     if(rcs[1]<0 || rcs[2]<0 ||
         rcs[1]!=out_header->len || rcs[2]!=out_header->len)
     {
+        std::cerr << "handle_write failed rcs=" << 
+            rcs[0] << ", " << rcs[1] << ", " <<
+            rcs[2] << std::endl;
         co_return -1;
     }
 
@@ -792,6 +801,10 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
         if(!req_allow_add_bytes &&
             req_read_rbytes!=rbytes - sizeof(fuse_in_header))
         {
+            std::cerr << "Unexpected request size. Expected " << 
+                (rbytes - sizeof(fuse_in_header)) << " got " << 
+                req_read_rbytes << ". Opcode=" << fheader->opcode <<
+                " Unique=" << fheader->unique << std::endl; 
             co_return -1;
         }
 
@@ -799,6 +812,7 @@ fuse_io_context::io_uring_task<int> queue_fuse_read(fuse_io_context& io)
             req_read_add_zero, init_read - sizeof(fuse_in_header), rbytes_buf_d);
         if(rbytes_buf==nullptr)
         {
+            std::cerr << "Reading rbytes failed." << std::endl;
             co_return -1;
         }
     }
